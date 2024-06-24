@@ -7,7 +7,7 @@ const app = express();
 
 // Use CORS middleware
 app.use(cors({
-  origin: ["http://localhost:5173", "http://127.0.0.1:5173"],
+  origin: ["https://letscall-1.onrender.com"],
   methods: ["GET", "POST"],
   allowedHeaders: ["Content-Type"],
   credentials: true
@@ -16,7 +16,7 @@ app.use(cors({
 const server = http.createServer(app);
 const io = socketIo(server, {
   cors: {
-    origin: ["http://localhost:5173", "http://127.0.0.1:5173"],
+    origin: ["https://letscall-1.onrender.com"],
     methods: ["GET", "POST"],
     credentials: true
   }
