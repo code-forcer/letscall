@@ -1,15 +1,11 @@
-import React, { useEffect, useRef } from 'react';
+import React from 'react';
 import useWebRTC from './hooks/useWebRTC';
 import './App.css'
+
 const DEFAULT_ROOM_ID = 'room1';
 
 const App = () => {
   const { localVideoRef, remoteVideoRef } = useWebRTC(DEFAULT_ROOM_ID);
-
-  useEffect(() => {
-    // This useEffect runs once on component mount to initiate the connection
-    // You can perform any initialization logic here if needed
-  }, []);
 
   return (
     <div style={{ textAlign: 'center', marginTop: '50px' }}>
