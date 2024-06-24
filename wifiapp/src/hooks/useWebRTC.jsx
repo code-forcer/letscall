@@ -41,7 +41,10 @@ const useWebRTC = (roomId) => {
       };
 
       peerConnection.ontrack = (event) => {
-        setRemoteStream(event.streams[0]);
+        // Ensure we set the remote stream only if it hasn't been set yet
+        if (!remoteStream) {
+          setRemoteStream(event.streams[0]);
+        }
       };
 
       // Set peerConnectionRef for cleanup
@@ -93,11 +96,15 @@ const useWebRTC = (roomId) => {
     };
   }, [roomId]);
 
+  // Update video elements when streams change
   useEffect(() => {
+    if (localVideoRef.current && localStream) {
+      localVideoRef.current.srcObject = localStream;
+    }
     if (remoteVideoRef.current && remoteStream) {
       remoteVideoRef.current.srcObject = remoteStream;
     }
-  }, [remoteStream]);
+  }, [localStream, remoteStream]);
 
   return { localVideoRef, remoteVideoRef };
 };
