@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { io } from 'socket.io-client';
 
 const useWebRTC = (roomId) => {
+  const [localStream, setLocalStream] = useState(null);
   const [remoteStream, setRemoteStream] = useState(null);
   const localVideoRef = useRef();
   const remoteVideoRef = useRef();
@@ -9,22 +10,27 @@ const useWebRTC = (roomId) => {
   const socketRef = useRef();
 
   useEffect(() => {
-    socketRef.current = io('https://letscall.onrender.com'); // Use the deployed backend URL
+    const initWebRTC = async () => {
+      // Get local media stream (camera and microphone)
+      const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+      setLocalStream(stream);
+      localVideoRef.current.srcObject = stream;
 
-    socketRef.current.emit('join', roomId);
+      // Initialize socket connection
+      socketRef.current = io('https://letscall.onrender.com'); // Replace with your backend URL
+      socketRef.current.emit('join', roomId);
 
-    socketRef.current.on('user-joined', async (userId) => {
-      const localStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
-      localVideoRef.current.srcObject = localStream;
-
+      // Initialize peer connection
       const peerConnection = new RTCPeerConnection({
         iceServers: [{ urls: 'stun:stun.l.google.com:19302' }],
       });
 
-      localStream.getTracks().forEach((track) => {
-        peerConnection.addTrack(track, localStream);
+      // Add local stream tracks to peer connection
+      stream.getTracks().forEach((track) => {
+        peerConnection.addTrack(track, stream);
       });
 
+      // Set up event listeners for peer connection
       peerConnection.onicecandidate = (event) => {
         if (event.candidate) {
           socketRef.current.emit('signal', {
@@ -38,8 +44,10 @@ const useWebRTC = (roomId) => {
         setRemoteStream(event.streams[0]);
       };
 
+      // Set peerConnectionRef for cleanup
       peerConnectionRef.current = peerConnection;
 
+      // Create and send offer to signaling server
       const offer = await peerConnection.createOffer();
       await peerConnection.setLocalDescription(offer);
 
@@ -47,29 +55,40 @@ const useWebRTC = (roomId) => {
         room: roomId,
         description: peerConnection.localDescription,
       });
-    });
 
-    socketRef.current.on('signal', async (data) => {
-      if (data.description) {
-        await peerConnectionRef.current.setRemoteDescription(new RTCSessionDescription(data.description));
-        if (data.description.type === 'offer') {
-          const answer = await peerConnectionRef.current.createAnswer();
-          await peerConnectionRef.current.setLocalDescription(answer);
+      // Handle signals received from signaling server
+      socketRef.current.on('signal', async (data) => {
+        if (data.description) {
+          await peerConnectionRef.current.setRemoteDescription(new RTCSessionDescription(data.description));
 
-          socketRef.current.emit('signal', {
-            room: roomId,
-            description: peerConnectionRef.current.localDescription,
-          });
+          if (data.description.type === 'offer') {
+            const answer = await peerConnectionRef.current.createAnswer();
+            await peerConnectionRef.current.setLocalDescription(answer);
+
+            socketRef.current.emit('signal', {
+              room: roomId,
+              description: peerConnectionRef.current.localDescription,
+            });
+          }
+        } else if (data.candidate) {
+          await peerConnectionRef.current.addIceCandidate(new RTCIceCandidate(data.candidate));
         }
-      } else if (data.candidate) {
-        await peerConnectionRef.current.addIceCandidate(new RTCIceCandidate(data.candidate));
-      }
-    });
+      });
+    };
+
+    initWebRTC();
 
     return () => {
-      socketRef.current.disconnect();
+      if (localStream) {
+        localStream.getTracks().forEach((track) => {
+          track.stop();
+        });
+      }
       if (peerConnectionRef.current) {
         peerConnectionRef.current.close();
+      }
+      if (socketRef.current) {
+        socketRef.current.disconnect();
       }
     };
   }, [roomId]);
