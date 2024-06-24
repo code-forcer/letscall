@@ -1,24 +1,86 @@
-import React, { useEffect, useRef } from 'react';
-import useWebRTC from './hooks/useWebRTC';
+import { useEffect, useRef, useState } from 'react';
+import { io } from 'socket.io-client';
 
-const DEFAULT_ROOM_ID = 'room1';
-
-const App = () => {
-  const { localVideoRef, remoteVideoRef } = useWebRTC(DEFAULT_ROOM_ID);
+const useWebRTC = (roomId) => {
+  const [remoteStream, setRemoteStream] = useState(null);
+  const localVideoRef = useRef();
+  const remoteVideoRef = useRef();
+  const peerConnectionRef = useRef();
+  const socketRef = useRef();
 
   useEffect(() => {
-    // This useEffect runs once on component mount to initiate the connection
-    // You can perform any initialization logic here if needed
-  }, []);
+    socketRef.current = io('https://letscall.onrender.com'); // Use the deployed backend URL
 
-  return (
-    <div style={{ textAlign: 'center', marginTop: '50px' }}>
-      <div>
-        <video ref={localVideoRef} autoPlay playsInline style={{ width: '300px', margin: '10px' }} />
-        <video ref={remoteVideoRef} autoPlay playsInline style={{ width: '300px', margin: '10px' }} />
-      </div>
-    </div>
-  );
+    socketRef.current.emit('join', roomId);
+
+    socketRef.current.on('user-joined', async (userId) => {
+      const localStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+      localVideoRef.current.srcObject = localStream;
+
+      const peerConnection = new RTCPeerConnection({
+        iceServers: [{ urls: 'stun:stun.l.google.com:19302' }],
+      });
+
+      localStream.getTracks().forEach((track) => {
+        peerConnection.addTrack(track, localStream);
+      });
+
+      peerConnection.onicecandidate = (event) => {
+        if (event.candidate) {
+          socketRef.current.emit('signal', {
+            room: roomId,
+            candidate: event.candidate,
+          });
+        }
+      };
+
+      peerConnection.ontrack = (event) => {
+        setRemoteStream(event.streams[0]);
+      };
+
+      peerConnectionRef.current = peerConnection;
+
+      const offer = await peerConnection.createOffer();
+      await peerConnection.setLocalDescription(offer);
+
+      socketRef.current.emit('signal', {
+        room: roomId,
+        description: peerConnection.localDescription,
+      });
+    });
+
+    socketRef.current.on('signal', async (data) => {
+      if (data.description) {
+        await peerConnectionRef.current.setRemoteDescription(new RTCSessionDescription(data.description));
+        if (data.description.type === 'offer') {
+          const answer = await peerConnectionRef.current.createAnswer();
+          await peerConnectionRef.current.setLocalDescription(answer);
+
+          socketRef.current.emit('signal', {
+            room: roomId,
+            description: peerConnectionRef.current.localDescription,
+          });
+        }
+      } else if (data.candidate) {
+        await peerConnectionRef.current.addIceCandidate(new RTCIceCandidate(data.candidate));
+      }
+    });
+
+    return () => {
+      socketRef.current.disconnect();
+      if (peerConnectionRef.current) {
+        peerConnectionRef.current.close();
+      }
+    };
+  }, [roomId]);
+
+  useEffect(() => {
+    if (remoteVideoRef.current && remoteStream) {
+      remoteVideoRef.current.srcObject = remoteStream;
+    }
+  }, [remoteStream]);
+
+  return { localVideoRef, remoteVideoRef };
 };
 
-export default App;
+export default useWebRTC;
