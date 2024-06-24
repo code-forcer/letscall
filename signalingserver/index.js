@@ -1,13 +1,13 @@
 const express = require('express');
 const http = require('http');
 const socketIo = require('socket.io');
-const cors = require('cors'); // Import the CORS package
+const cors = require('cors');
 
 const app = express();
 
 // Use CORS middleware
 app.use(cors({
-  origin: ["https://letscall-1.onrender.com"],
+  origin: ["https://letscall-1.onrender.com"], // Replace with your deployed frontend URL
   methods: ["GET", "POST"],
   allowedHeaders: ["Content-Type"],
   credentials: true
@@ -16,19 +16,19 @@ app.use(cors({
 const server = http.createServer(app);
 const io = socketIo(server, {
   cors: {
-    origin: ["https://letscall-1.onrender.com"],
+    origin: ["https://letscall-1.onrender.com"], // Replace with your deployed frontend URL
     methods: ["GET", "POST"],
     credentials: true
   }
 });
 
+const DEFAULT_ROOM_ID = 'room1';
+
 io.on('connection', (socket) => {
   console.log('a user connected');
 
-  socket.on('join', (room) => {
-    socket.join(room);
-    socket.to(room).emit('user-joined', socket.id);
-  });
+  // Automatically join the default room
+  socket.join(DEFAULT_ROOM_ID);
 
   socket.on('signal', (data) => {
     io.to(data.room).emit('signal', data);
@@ -39,6 +39,8 @@ io.on('connection', (socket) => {
   });
 });
 
-server.listen(3001, () => {
-  console.log('listening on *:3001');
+const PORT = process.env.PORT || 3001;
+
+server.listen(PORT, () => {
+  console.log(`listening on *:${PORT}`);
 });
