@@ -9,7 +9,7 @@ const useWebRTC = (roomId) => {
   const socketRef = useRef();
 
   useEffect(() => {
-    socketRef.current = io('http://localhost:3001');
+    socketRef.current = io('https://letscall.onrender.com');
 
     socketRef.current.emit('join', roomId);
 
